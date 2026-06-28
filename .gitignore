@@ -50,9 +50,6 @@ index.js
 /*.jpeg
 /*.jpg
 /*.png
-!/赞助码.jpeg
-!/二元决策树演示图.jpg
-!/assets/**/*.png
 videoCover-*
 *_fix_*.md
 remove_*.md
@@ -62,8 +59,6 @@ fix_garbage_line.py
 MAC*.txt
 *部署*.txt
 *智能体*.txt
-!MAC版本智能体部署方法.txt
-!把这个扔给龙虾-智能体部署方法.txt
 
 # ── IDE / Agent 本地目录 ─────────────────────────────────────────────────────
 .idea/
