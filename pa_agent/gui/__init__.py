@@ -6,6 +6,8 @@ from pa_agent.gui.chart_widget import ChartWidget
 from pa_agent.gui.decision_panel import DecisionPanel
 from pa_agent.gui.conversation_widget import ConversationWidget
 from pa_agent.gui.debug_widget import DebugWidget
+from pa_agent.gui.batch_scan_dialog import BatchScanDialog
+from pa_agent.gui.kline_view_dialog import KlineViewDialog
 
 __all__ = [
     "MainWindow",
@@ -14,4 +16,6 @@ __all__ = [
     "DecisionPanel",
     "ConversationWidget",
     "DebugWidget",
+    "BatchScanDialog",
+    "KlineViewDialog",
 ]

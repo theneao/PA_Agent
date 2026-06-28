@@ -545,6 +545,13 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001
                 pass
 
+        self._batch_scan_btn = QPushButton("批量扫描")
+        self._batch_scan_btn.setObjectName("primaryButton")
+        self._batch_scan_btn.setMinimumWidth(90)
+        self._batch_scan_btn.setToolTip("A 股板块批量扫描：选择板块→排序条件→前 N 只股票，一次性 AI 分析并统计结果")
+        self._batch_scan_btn.clicked.connect(self._on_batch_scan)
+        ctrl_layout.addWidget(self._batch_scan_btn)
+
         self._resume_chart_btn = QPushButton("图表实时更新")
         self._resume_chart_btn.setEnabled(False)
         self._resume_chart_btn.setToolTip(
@@ -2137,6 +2144,13 @@ class MainWindow(QMainWindow):
                 f"等待当前K线收盘…（{ts_hint}，收盘后将自动{submit_hint}）"
             )
         return True
+
+    def _on_batch_scan(self) -> None:
+        """Open the batch scan dialog for A-share sector/board screening."""
+        from pa_agent.gui.batch_scan_dialog import BatchScanDialog
+
+        dlg = BatchScanDialog(app_context=self._ctx, parent=self)
+        dlg.exec()
 
     def _on_demo_mode_button(self) -> None:
         """Enter demo mode (manual/auto) or exit if already active."""
@@ -4156,6 +4170,16 @@ class MainWindow(QMainWindow):
         reason = self._submit_block_reason()
         can = reason is None
         self._submit_btn.setEnabled(can)
+        if hasattr(self, "_batch_scan_btn"):
+            # Batch scan is only blocked by API key (not symbol/timeframe)
+            if not self._has_api_key_configured():
+                self._batch_scan_btn.setEnabled(False)
+                self._batch_scan_btn.setToolTip("未配置 API Key，请点击左上角「AI 模型」填写后才能分析")
+            else:
+                self._batch_scan_btn.setEnabled(True)
+                self._batch_scan_btn.setToolTip(
+                    "A 股板块批量扫描：选择板块→排序条件→前 N 只股票，一次性 AI 分析并统计结果"
+                )
         if hasattr(self, "_incremental_submit_btn"):
             self._incremental_submit_btn.setEnabled(can)
             if can:

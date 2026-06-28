@@ -920,3 +920,160 @@ def fetch_stock_quote(symbol: str) -> dict[str, Any] | None:
     if price_raw is not None:
         result["price"] = float(price_raw)
     return result
+
+
+# ── Sector/board listing and stock screening ─────────────────────────────────
+
+# fs values for board listing (quote.eastmoney.com board lists)
+BOARD_TYPE_FS_MAP: dict[str, str] = {
+    "industry": "m:90+t:2",   # 行业板块
+    "concept": "m:90+t:3",    # 概念板块
+    "region": "m:90+t:1",     # 地域板块
+}
+
+BOARD_TYPE_LABELS: dict[str, str] = {
+    "industry": "行业板块",
+    "concept": "概念板块",
+    "region": "地域板块",
+}
+
+# User-facing sort criteria -> (api_field, descending_by_default, label)
+SORT_CRITERIA_MAP: dict[str, tuple[str, bool, str]] = {
+    "market_cap":    ("f20", True,  "总市值"),
+    "pct_chg_desc":  ("f3",  True,  "涨幅"),
+    "pct_chg_asc":   ("f3",  False, "跌幅"),
+    "volume_ratio":  ("f10", True,  "量比"),
+    "pe_ratio":      ("f9",  True,  "市盈率(动态)"),
+}
+
+# Board list fields: code, name, price, pct_chg, chg_amount, volume, amount,
+# turnover_pct, pe_ratio, volume_ratio, total_cap, float_cap
+_BOARD_LIST_FIELDS = (
+    "f12,f14,f2,f3,f4,f5,f6,f8,f9,f10,f20,f21"
+)
+
+
+def fetch_sector_boards(board_type: str = "industry") -> list[dict[str, Any]]:
+    """Fetch sector/board list from East Money.
+
+    Args:
+        board_type: ``"industry"`` (行业板块), ``"concept"`` (概念板块),
+                    ``"region"`` (地域板块).
+
+    Returns:
+        List of dicts with keys: code (BKxxxx), name, pct_chg, total_cap, …
+    """
+    fs = BOARD_TYPE_FS_MAP.get(board_type)
+    if not fs:
+        raise ValueError(f"Unknown board_type: {board_type!r}; use one of {list(BOARD_TYPE_FS_MAP)}")
+
+    params: dict[str, Any] = {
+        "pn": "1",
+        "pz": "500",
+        "po": "1",
+        "np": "1",
+        "dect": "1",
+        "ut": _UT,
+        "wbp2u": _WBP2U,
+        "fltt": "2",
+        "invt": "2",
+        "fid": "f3",
+        "fs": fs,
+        "fields": _BOARD_LIST_FIELDS,
+    }
+    try:
+        data = _get_json_on_hosts(
+            _QUOTE_HOSTS,
+            "/api/qt/clist/get",
+            params,
+            timeout=15.0,
+            host_kind="quote",
+            referer=_REFERER_CLIST,
+            max_rounds=2,
+            max_hosts=2,
+        )
+    except EastMoneyTransientError:
+        return []
+    payload = data.get("data") or {}
+    diff = payload.get("diff") or []
+    if not isinstance(diff, list):
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for item in diff:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("f12", "")).strip()
+        if not code.startswith("BK"):
+            continue
+        rows.append({
+            "code": code,
+            "name": str(item.get("f14", "") or code),
+            "price": _safe_float(item.get("f2")),
+            "pct_chg": _safe_float(item.get("f3")),
+            "volume_ratio": _safe_float(item.get("f10")),
+            "total_cap": _safe_float(item.get("f20")),
+            "pe_ratio": _safe_float(item.get("f9")),
+            "turnover_pct": _safe_float(item.get("f8")),
+        })
+    return rows
+
+
+def fetch_board_top_stocks(
+    board_code: str,
+    sort_field: str = "f3",
+    top_n: int = 30,
+    *,
+    sort_desc: bool = True,
+) -> list[dict[str, Any]]:
+    """Fetch top *top_n* stocks from a board/sector, sorted by *sort_field*.
+
+    Args:
+        board_code: Board code like ``"BK0477"``.
+        sort_field: East Money API field id (e.g. ``"f3"`` for pct_chg,
+                    ``"f20"`` for market cap).
+        top_n: Maximum number of stocks to return.
+        sort_desc: ``True`` for descending, ``False`` for ascending.
+
+    Returns:
+        List of dicts with keys: code, name, price, pct_chg, volume, amount,
+        turnover_pct, volume_ratio, total_cap, float_cap.
+    """
+    top_n = max(1, min(500, int(top_n)))
+    board_code = board_code.strip().upper()
+    if not board_code.startswith("BK"):
+        board_code = f"BK{board_code}"
+
+    po = "1" if sort_desc else "0"
+    params: dict[str, Any] = {
+        "pn": "1",
+        "pz": str(top_n),
+        "po": po,
+        "np": "1",
+        "dect": "1",
+        "ut": _UT,
+        "wbp2u": _WBP2U,
+        "fltt": "2",
+        "invt": "2",
+        "fid": sort_field,
+        "fs": f"b:{board_code}+f:!50",
+        "fields": _CLIST_FIELDS_UNIVERSE,
+    }
+    try:
+        data = _get_json_on_hosts(
+            _QUOTE_HOSTS,
+            "/api/qt/clist/get",
+            params,
+            timeout=15.0,
+            host_kind="quote",
+            referer=_REFERER_CLIST,
+            max_rounds=2,
+            max_hosts=2,
+        )
+    except EastMoneyTransientError:
+        return []
+    payload = data.get("data") or {}
+    diff = payload.get("diff") or []
+    if not isinstance(diff, list):
+        return []
+    return _parse_clist_rows(diff)[:top_n]
